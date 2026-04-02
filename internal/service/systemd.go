@@ -18,7 +18,7 @@ After=network.target nss-lookup.target
 
 [Service]
 Type=simple
-ExecStart=%s serve --data-dir %s
+ExecStart="%s" serve --data-dir "%s"
 Restart=on-failure
 RestartSec=5
 LimitNOFILE=65535
@@ -29,6 +29,12 @@ WantedBy=multi-user.target
 }
 
 func (m *systemdManager) Install(binPath, dataDir string) error {
+	if err := validatePath(binPath); err != nil {
+		return err
+	}
+	if err := validatePath(dataDir); err != nil {
+		return err
+	}
 	content := systemdUnitContent(binPath, dataDir)
 	if err := os.WriteFile(systemdUnitPath, []byte(content), 0644); err != nil {
 		return fmt.Errorf("failed to write unit file: %w", err)

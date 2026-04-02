@@ -7,11 +7,11 @@ import (
 
 func TestSystemdUnit(t *testing.T) {
 	content := systemdUnitContent("/usr/local/bin/sing-box", "/usr/local/etc/sing-box")
-	if !strings.Contains(content, "ExecStart=/usr/local/bin/sing-box serve") {
-		t.Error("unit should contain ExecStart with serve command")
+	if !strings.Contains(content, `ExecStart="/usr/local/bin/sing-box" serve`) {
+		t.Error("unit should contain ExecStart with quoted binary path and serve command")
 	}
-	if !strings.Contains(content, "--data-dir /usr/local/etc/sing-box") {
-		t.Error("unit should contain --data-dir flag")
+	if !strings.Contains(content, `--data-dir "/usr/local/etc/sing-box"`) {
+		t.Error("unit should contain --data-dir flag with quoted path")
 	}
 	if !strings.Contains(content, "[Unit]") {
 		t.Error("unit should have [Unit] section")

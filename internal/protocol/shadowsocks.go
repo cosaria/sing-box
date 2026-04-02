@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strings"
 
 	"github.com/cosaria/sing-box/internal/store"
 	"github.com/sagernet/sing-box/option"
@@ -82,12 +83,7 @@ func isSSAEAD2022(method string) bool {
 }
 
 func uuidToBase64Key(uuidStr string) string {
-	clean := ""
-	for _, c := range uuidStr {
-		if c != '-' {
-			clean += string(c)
-		}
-	}
+	clean := strings.ReplaceAll(uuidStr, "-", "")
 	if len(clean) != 32 {
 		return uuidStr
 	}

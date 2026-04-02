@@ -41,7 +41,9 @@ func All() []Protocol {
 // GenerateUUID creates a random UUID v4 string.
 func GenerateUUID() string {
 	var uuid [16]byte
-	rand.Read(uuid[:])
+	if _, err := rand.Read(uuid[:]); err != nil {
+		panic("crypto/rand.Read failed: " + err.Error())
+	}
 	uuid[6] = (uuid[6] & 0x0f) | 0x40 // version 4
 	uuid[8] = (uuid[8] & 0x3f) | 0x80 // variant 1
 	return fmt.Sprintf("%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
@@ -55,6 +57,9 @@ func GenerateUUID() string {
 // GenerateShortID creates an 8-character hex string for Reality short_id.
 func GenerateShortID() string {
 	b := make([]byte, 4)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		panic("crypto/rand.Read failed: " + err.Error())
+	}
 	return fmt.Sprintf("%02x%02x%02x%02x", b[0], b[1], b[2], b[3])
 }
+

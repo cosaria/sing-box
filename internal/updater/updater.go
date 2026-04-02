@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -63,9 +64,15 @@ func checkLatestVersion(apiURL string) (version string, downloadURL string, err 
 		return "", "", err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", "", fmt.Errorf("GitHub API returned %d", resp.StatusCode)
+	}
 	var release githubRelease
 	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
 		return "", "", fmt.Errorf("failed to decode response: %w", err)
+	}
+	if release.TagName == "" {
+		return "", "", fmt.Errorf("GitHub API response missing tag_name")
 	}
 	archName := fmt.Sprintf("sing-box-linux-%s", runtime.GOARCH)
 	for _, asset := range release.Assets {
@@ -100,7 +107,29 @@ func isNewer(current, latest string) bool {
 	if current == "dev" || current == "" {
 		return true
 	}
-	current = strings.TrimPrefix(current, "v")
-	latest = strings.TrimPrefix(latest, "v")
-	return latest > current
+	curParts := parseSemver(current)
+	latParts := parseSemver(latest)
+	for i := 0; i < 3; i++ {
+		if latParts[i] > curParts[i] {
+			return true
+		}
+		if latParts[i] < curParts[i] {
+			return false
+		}
+	}
+	return false
+}
+
+func parseSemver(v string) [3]int {
+	v = strings.TrimPrefix(v, "v")
+	parts := strings.SplitN(v, ".", 3)
+	var result [3]int
+	for i, p := range parts {
+		if i >= 3 {
+			break
+		}
+		n, _ := strconv.Atoi(p)
+		result[i] = n
+	}
+	return result
 }

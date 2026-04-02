@@ -29,6 +29,12 @@ depend() {
 }
 
 func (m *openrcManager) Install(binPath, dataDir string) error {
+	if err := validatePath(binPath); err != nil {
+		return err
+	}
+	if err := validatePath(dataDir); err != nil {
+		return err
+	}
 	content := openrcInitContent(binPath, dataDir)
 	if err := os.WriteFile(openrcInitPath, []byte(content), 0755); err != nil {
 		return fmt.Errorf("failed to write init script: %w", err)

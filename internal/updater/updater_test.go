@@ -27,6 +27,17 @@ func TestCheckLatestVersion(t *testing.T) {
 	}
 }
 
+func TestCheckLatestVersionHTTPError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer ts.Close()
+	_, _, err := checkLatestVersion(ts.URL)
+	if err == nil {
+		t.Fatal("expected error for non-200 status, got nil")
+	}
+}
+
 func TestIsNewer(t *testing.T) {
 	tests := []struct {
 		current, latest string
@@ -36,6 +47,9 @@ func TestIsNewer(t *testing.T) {
 		{"v0.2.0", "v0.2.0", false},
 		{"v0.3.0", "v0.2.0", false},
 		{"dev", "v0.1.0", true},
+		{"v0.9.0", "v0.10.0", true},   // 确保不是字符串比较
+		{"v1.0.0", "v0.99.0", false},  // 高主版本不降级
+		{"v2.0.0", "v10.0.0", true},   // 双位数主版本
 	}
 	for _, tt := range tests {
 		got := isNewer(tt.current, tt.latest)
