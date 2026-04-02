@@ -72,9 +72,7 @@ func (v *VLESS) BuildInbound(ib *store.Inbound) (option.Inbound, error) {
 		Type: "vless",
 		Tag:  ib.Tag,
 		Options: &option.VLESSInboundOptions{
-			ListenOptions: option.ListenOptions{
-				ListenPort: ib.Port,
-			},
+			ListenOptions: listenAll(ib.Port),
 			Users: []option.VLESSUser{
 				{Name: "default", UUID: s.UUID, Flow: s.Flow},
 			},

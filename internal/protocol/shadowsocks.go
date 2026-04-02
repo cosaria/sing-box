@@ -50,9 +50,7 @@ func (s *Shadowsocks) BuildInbound(ib *store.Inbound) (option.Inbound, error) {
 		Type: "shadowsocks",
 		Tag:  ib.Tag,
 		Options: &option.ShadowsocksInboundOptions{
-			ListenOptions: option.ListenOptions{
-				ListenPort: ib.Port,
-			},
+			ListenOptions: listenAll(ib.Port),
 			Method:   ss.Method,
 			Password: password,
 		},

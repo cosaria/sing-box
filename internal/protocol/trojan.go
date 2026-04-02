@@ -38,9 +38,7 @@ func (tr *Trojan) BuildInbound(ib *store.Inbound) (option.Inbound, error) {
 		Type: "trojan",
 		Tag:  ib.Tag,
 		Options: &option.TrojanInboundOptions{
-			ListenOptions: option.ListenOptions{
-				ListenPort: ib.Port,
-			},
+			ListenOptions: listenAll(ib.Port),
 			Users: []option.TrojanUser{
 				{Name: "default", Password: s.Password},
 			},

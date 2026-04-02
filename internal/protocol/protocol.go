@@ -3,10 +3,21 @@ package protocol
 import (
 	"crypto/rand"
 	"fmt"
+	"net/netip"
 
 	"github.com/cosaria/sing-box/internal/store"
 	"github.com/sagernet/sing-box/option"
+	"github.com/sagernet/sing/common/json/badoption"
 )
+
+// listenAll returns ListenOptions that bind to 0.0.0.0 (all interfaces).
+func listenAll(port uint16) option.ListenOptions {
+	addr := badoption.Addr(netip.IPv4Unspecified())
+	return option.ListenOptions{
+		Listen:     &addr,
+		ListenPort: port,
+	}
+}
 
 // Protocol defines the contract every proxy protocol must implement.
 type Protocol interface {
