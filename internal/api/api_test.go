@@ -32,7 +32,7 @@ func setupTestServer(t *testing.T) (*Server, *store.Store, *mockEngine) {
 	t.Cleanup(func() { st.Close() })
 
 	eng := &mockEngine{}
-	srv := NewServer(eng, st, nil, "127.0.0.1:0", "test-token")
+	srv := NewServer(eng, st, nil, "127.0.0.1:0", "test-token", "test-sub-token")
 	return srv, st, eng
 }
 
@@ -223,5 +223,66 @@ func TestCreateInboundUnsupportedProtocol(t *testing.T) {
 	srv.router.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestGetStats(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	st.InsertTrafficLog("ss-8388", 1000, 2000)
+	st.InsertTrafficLog("ss-8388", 500, 1000)
+	req := httptest.NewRequest("GET", "/api/stats", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	w := httptest.NewRecorder()
+	srv.router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+	var resp []map[string]any
+	json.NewDecoder(w.Body).Decode(&resp)
+	if len(resp) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(resp))
+	}
+}
+
+func TestGetStatsByTag(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	st.InsertTrafficLog("ss-8388", 1000, 2000)
+	req := httptest.NewRequest("GET", "/api/stats/ss-8388", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	w := httptest.NewRecorder()
+	srv.router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+}
+
+func TestSubscriptionValidToken(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	st.CreateInbound(&store.Inbound{
+		Tag: "shadowsocks-8388", Protocol: "shadowsocks", Port: 8388,
+		Settings: `{"method":"2022-blake3-aes-128-gcm","password":"550e8400-e29b-41d4-a716-446655440000"}`,
+	})
+	req := httptest.NewRequest("GET", "/sub/test-sub-token", nil)
+	req.Host = "1.2.3.4:9090"
+	w := httptest.NewRecorder()
+	srv.router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d; body = %s", w.Code, http.StatusOK, w.Body.String())
+	}
+	if ct := w.Header().Get("Content-Type"); ct != "text/plain; charset=utf-8" {
+		t.Errorf("content-type = %q, want text/plain", ct)
+	}
+	if w.Body.Len() == 0 {
+		t.Error("response body should not be empty")
+	}
+}
+
+func TestSubscriptionInvalidToken(t *testing.T) {
+	srv, _, _ := setupTestServer(t)
+	req := httptest.NewRequest("GET", "/sub/wrong-token", nil)
+	w := httptest.NewRecorder()
+	srv.router.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusUnauthorized)
 	}
 }

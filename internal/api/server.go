@@ -17,31 +17,40 @@ type EngineController interface {
 }
 
 type Server struct {
-	engine  EngineController
-	store   *store.Store
-	router  chi.Router
-	httpSrv *http.Server
-	token   string
+	engine   EngineController
+	store    *store.Store
+	router   chi.Router
+	httpSrv  *http.Server
+	token    string
+	subToken string
 }
 
-func NewServer(engine EngineController, st *store.Store, svc any, listenAddr, token string) *Server {
+func NewServer(engine EngineController, st *store.Store, svc any, listenAddr, token, subToken string) *Server {
 	s := &Server{
-		engine: engine,
-		store:  st,
-		token:  token,
+		engine:   engine,
+		store:    st,
+		token:    token,
+		subToken: subToken,
 	}
 
 	r := chi.NewRouter()
-	r.Use(tokenAuth(token))
 
-	r.Get("/api/status", s.handleStatus)
-	r.Post("/api/reload", s.handleReload)
+	// Public routes (no auth)
+	r.Get("/sub/{token}", s.handleSubscription)
 
-	r.Get("/api/inbounds", s.handleListInbounds)
-	r.Post("/api/inbounds", s.handleCreateInbound)
-	r.Get("/api/inbounds/{id}", s.handleGetInbound)
-	r.Put("/api/inbounds/{id}", s.handleUpdateInbound)
-	r.Delete("/api/inbounds/{id}", s.handleDeleteInbound)
+	// Authenticated API routes
+	r.Group(func(r chi.Router) {
+		r.Use(tokenAuth(token))
+		r.Get("/api/status", s.handleStatus)
+		r.Post("/api/reload", s.handleReload)
+		r.Get("/api/inbounds", s.handleListInbounds)
+		r.Post("/api/inbounds", s.handleCreateInbound)
+		r.Get("/api/inbounds/{id}", s.handleGetInbound)
+		r.Put("/api/inbounds/{id}", s.handleUpdateInbound)
+		r.Delete("/api/inbounds/{id}", s.handleDeleteInbound)
+		r.Get("/api/stats", s.handleGetStats)
+		r.Get("/api/stats/{tag}", s.handleGetStatsByTag)
+	})
 
 	s.router = r
 	s.httpSrv = &http.Server{
