@@ -2,116 +2,129 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
-	"net/http"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"github.com/sagernet/sing-box"
-	"github.com/sagernet/sing-box/include"
-	"github.com/sagernet/sing-box/option"
+	"github.com/233boy/sing-box/internal/api"
+	"github.com/233boy/sing-box/internal/engine"
+	"github.com/233boy/sing-box/internal/platform"
+	"github.com/233boy/sing-box/internal/service"
+	"github.com/233boy/sing-box/internal/store"
+	"github.com/spf13/cobra"
 )
 
 func main() {
-	fmt.Println("=== M0: sing-box embedding validation ===")
-	fmt.Println()
+	rootCmd := &cobra.Command{
+		Use:   "sing-box",
+		Short: "sing-box 管理面板",
+	}
 
-	port := uint16(18388)
-	password := "test-password-for-m0"
-	method := "aes-256-gcm"
+	rootCmd.AddCommand(serveCmd())
 
-	// Step 1: Create context with protocol registries
-	ctx := include.Context(context.Background())
+	if err := rootCmd.Execute(); err != nil {
+		os.Exit(1)
+	}
+}
 
-	// Step 2: Build Shadowsocks inbound config
-	opts := box.Options{
-		Context: ctx,
-		Options: option.Options{
-			Log: &option.LogOptions{
-				Level: "info",
-			},
-			Inbounds: []option.Inbound{
-				{
-					Type: "shadowsocks",
-					Tag:  "ss-test",
-					Options: &option.ShadowsocksInboundOptions{
-						ListenOptions: option.ListenOptions{
-							ListenPort: port,
-						},
-						Method:   method,
-						Password: password,
-					},
-				},
-			},
-			Outbounds: []option.Outbound{
-				{
-					Type: "direct",
-					Tag:  "direct",
-				},
-			},
+func serveCmd() *cobra.Command {
+	var (
+		listenAddr string
+		dataDir    string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "serve",
+		Short: "启动守护进程（HTTP API + sing-box 引擎）",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runServe(listenAddr, dataDir)
 		},
 	}
 
-	// Step 3: Create box instance
-	fmt.Println("[M0] Creating sing-box instance...")
-	instance, err := box.New(opts)
-	if err != nil {
-		fmt.Printf("[M0] FAIL: box.New() error: %v\n", err)
-		os.Exit(1)
+	plat := platform.Detect()
+	cmd.Flags().StringVar(&listenAddr, "listen", "127.0.0.1:9090", "API 监听地址")
+	cmd.Flags().StringVar(&dataDir, "data-dir", plat.DataDir, "数据目录")
+
+	return cmd
+}
+
+func runServe(listenAddr, dataDir string) error {
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		return fmt.Errorf("无法创建数据目录: %w", err)
 	}
-	fmt.Println("[M0] PASS: box.New() succeeded")
 
-	// Step 4: Start the engine
-	fmt.Println("[M0] Starting sing-box engine...")
-	err = instance.Start()
+	dbPath := dataDir + "/panel.db"
+	st, err := store.Open(dbPath)
 	if err != nil {
-		fmt.Printf("[M0] FAIL: box.Start() error: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("无法打开数据库: %w", err)
 	}
-	fmt.Printf("[M0] PASS: Shadowsocks running on port %d (method: %s)\n", port, method)
+	defer st.Close()
 
-	// Step 5: Basic HTTP API server
-	mux := http.NewServeMux()
-	mux.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
-			"status":  "running",
-			"port":    port,
-			"method":  method,
-			"version": "m0-prototype",
-		})
-	})
-
-	apiAddr := "127.0.0.1:9090"
-	server := &http.Server{Addr: apiAddr, Handler: mux}
-	go func() {
-		fmt.Printf("[M0] HTTP API listening on %s\n", apiAddr)
-		if err := server.ListenAndServe(); err != http.ErrServerClosed {
-			fmt.Printf("[M0] HTTP server error: %v\n", err)
+	token, err := st.GetSetting("api_token")
+	if err != nil {
+		return fmt.Errorf("无法读取 API token: %w", err)
+	}
+	if token == "" {
+		token = generateToken()
+		if err := st.SetSetting("api_token", token); err != nil {
+			return fmt.Errorf("无法保存 API token: %w", err)
 		}
-	}()
+	}
 
-	fmt.Println()
-	fmt.Println("=== M0 VALIDATION RESULTS ===")
-	fmt.Println("[PASS] 1. box.New() — sing-box instance created")
-	fmt.Println("[PASS] 2. box.Start() — Shadowsocks inbound running")
-	fmt.Println("[PASS] 3. HTTP API — basic server on :9090")
-	fmt.Printf("[INFO] Test: curl http://%s/api/status\n", apiAddr)
-	fmt.Println()
-	fmt.Println("Press Ctrl+C to stop...")
+	plat := platform.Detect()
+	var svcMgr service.Manager
+	if mgr := service.NewManager(plat.InitSystem); mgr != nil {
+		svcMgr = mgr
+	}
 
-	// Wait for signal
+	eng := engine.New(st)
+	if err := eng.Start(); err != nil {
+		slog.Warn("引擎启动失败（可能没有配置）", "error", err)
+	}
+
+	srv := api.NewServer(eng, st, svcMgr, listenAddr, token)
+	if err := srv.Start(); err != nil {
+		return fmt.Errorf("无法启动 API 服务: %w", err)
+	}
+
+	slog.Info("sing-box 面板已启动",
+		"listen", listenAddr,
+		"data_dir", dataDir,
+		"init_system", plat.InitSystem,
+	)
+	fmt.Printf("\nAPI Token: %s\n", token)
+	fmt.Printf("API 地址: http://%s\n\n", listenAddr)
+
 	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	<-sigCh
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 
-	fmt.Println("\n[M0] Shutting down...")
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer shutdownCancel()
-	server.Shutdown(shutdownCtx)
-	instance.Close()
-	fmt.Println("[M0] Done.")
+	for {
+		sig := <-sigCh
+		switch sig {
+		case syscall.SIGHUP:
+			slog.Info("收到 SIGHUP，重载引擎...")
+			if err := eng.Reload(); err != nil {
+				slog.Error("重载失败", "error", err)
+			}
+		case syscall.SIGINT, syscall.SIGTERM:
+			slog.Info("正在关闭...")
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			srv.Shutdown(shutdownCtx)
+			eng.Stop()
+			slog.Info("已关闭")
+			return nil
+		}
+	}
+}
+
+func generateToken() string {
+	b := make([]byte, 16)
+	rand.Read(b)
+	return hex.EncodeToString(b)
 }
