@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/233boy/sing-box/internal/stats"
 	"github.com/233boy/sing-box/internal/store"
 	box "github.com/sagernet/sing-box"
 	"github.com/sagernet/sing-box/include"
@@ -18,10 +19,11 @@ type Engine struct {
 	instance  *box.Box
 	running   bool
 	startedAt time.Time
+	tracker   *stats.Tracker
 }
 
 func New(s *store.Store) *Engine {
-	return &Engine{store: s}
+	return &Engine{store: s, tracker: stats.NewTracker()}
 }
 
 func (e *Engine) Start() error {
@@ -56,6 +58,7 @@ func (e *Engine) Start() error {
 		return fmt.Errorf("failed to start sing-box: %w", err)
 	}
 
+	instance.Router().AppendTracker(e.tracker)
 	e.instance = instance
 	e.running = true
 	e.startedAt = time.Now()
@@ -117,6 +120,7 @@ func (e *Engine) Reload() error {
 		return fmt.Errorf("failed to start new sing-box instance: %w", err)
 	}
 
+	instance.Router().AppendTracker(e.tracker)
 	e.instance = instance
 	e.running = true
 	e.startedAt = time.Now()
@@ -134,4 +138,8 @@ func (e *Engine) StartedAt() time.Time {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.startedAt
+}
+
+func (e *Engine) Tracker() *stats.Tracker {
+	return e.tracker
 }
