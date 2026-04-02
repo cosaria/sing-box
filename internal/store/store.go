@@ -52,6 +52,14 @@ var migrations = []string{
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	)`,
+	// Migration 2: traffic_logs table
+	`CREATE TABLE IF NOT EXISTS traffic_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    inbound_tag TEXT NOT NULL,
+    upload INTEGER NOT NULL,
+    download INTEGER NOT NULL,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+)`,
 }
 
 func (s *Store) migrate() error {
