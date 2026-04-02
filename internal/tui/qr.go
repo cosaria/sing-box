@@ -14,7 +14,7 @@ func RenderQR(content string) string {
 	if content == "" {
 		return ""
 	}
-	q, err := qrcode.New(content, qrcode.Medium)
+	q, err := qrcode.New(content, qrcode.Low)
 	if err != nil {
 		return ""
 	}
