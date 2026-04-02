@@ -6,16 +6,17 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/cosaria/sing-box/internal/store"
 )
 
 type editModel struct {
-	inbound   *Inbound
+	inbound   *store.Inbound
 	portInput textinput.Model
 	focused   bool
 	err       error
 }
 
-func newEditModel(ib *Inbound) editModel {
+func newEditModel(ib *store.Inbound) editModel {
 	ti := textinput.New()
 	ti.Placeholder = "输入新端口（1-65535）"
 	ti.CharLimit = 5
@@ -29,23 +30,32 @@ func newEditModel(ib *Inbound) editModel {
 	}
 }
 
-func updateInbound(c *Client, id int64, port *uint16) tea.Cmd {
+func updateInbound(st *store.Store, dataDir string, ib *store.Inbound, port uint16) tea.Cmd {
 	return func() tea.Msg {
-		ib, err := c.UpdateInbound(id, port, nil)
-		if err != nil {
+		ib.Port = port
+		if err := st.UpdateInbound(ib); err != nil {
 			return errMsg{err}
 		}
-		return inboundUpdatedMsg{ib}
+		reloadDaemon(dataDir)
+		return inboundUpdatedMsg{}
 	}
 }
 
 func (a app) updateEdit(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
+	switch msg.(type) {
 	case inboundUpdatedMsg:
 		a.state = stateList
+		tag := ""
+		port := uint16(0)
+		if a.edit.inbound != nil {
+			tag = a.edit.inbound.Tag
+			port = a.edit.inbound.Port
+		}
 		a.edit = editModel{}
-		a.message = fmt.Sprintf("已更新 %s 端口为 %d", msg.inbound.Tag, msg.inbound.Port)
-		return a, loadInbounds(a.client)
+		a.message = fmt.Sprintf("已更新 %s 端口为 %d", tag, port)
+		return a, loadInbounds(a.store)
+	}
+	switch msg := msg.(type) {
 	case errMsg:
 		a.edit.err = msg.err
 		return a, nil
@@ -64,7 +74,7 @@ func (a app) updateEdit(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			a.edit.err = nil
 			port := uint16(portNum)
-			return a, updateInbound(a.client, a.edit.inbound.ID, &port)
+			return a, updateInbound(a.store, a.dataDir, a.edit.inbound, port)
 		default:
 			var cmd tea.Cmd
 			a.edit.portInput, cmd = a.edit.portInput.Update(msg)

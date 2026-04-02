@@ -5,10 +5,11 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/cosaria/sing-box/internal/store"
 )
 
 type listModel struct {
-	inbounds []Inbound
+	inbounds []*store.Inbound
 	cursor   int
 	editMode bool
 }
@@ -16,16 +17,17 @@ type listModel struct {
 func newListModel() listModel { return listModel{} }
 
 type detailModel struct {
-	inbound  *Inbound
+	inbound  *store.Inbound
 	shareURL string
 	confirm  bool
 }
 
-func deleteInbound(c *Client, id int64) tea.Cmd {
+func deleteInboundCmd(st *store.Store, dataDir string, id int64) tea.Cmd {
 	return func() tea.Msg {
-		if err := c.DeleteInbound(id); err != nil {
+		if err := st.DeleteInbound(id); err != nil {
 			return errMsg{err}
 		}
+		reloadDaemon(dataDir)
 		return inboundDeletedMsg{}
 	}
 }
@@ -39,7 +41,7 @@ func (a app) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 	case inboundDeletedMsg:
-		return a, loadInbounds(a.client)
+		return a, loadInbounds(a.store)
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "esc", "q":
@@ -55,18 +57,18 @@ func (a app) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.list.cursor++
 			}
 		case "r":
-			return a, loadInbounds(a.client)
+			return a, loadInbounds(a.store)
 		case "enter":
 			if len(a.list.inbounds) == 0 {
 				return a, nil
 			}
-			selected := &a.list.inbounds[a.list.cursor]
+			selected := a.list.inbounds[a.list.cursor]
 			if a.list.editMode {
 				a.state = stateEdit
 				a.edit = newEditModel(selected)
 				return a, nil
 			}
-			host := extractHost(a.listenAddr)
+			host := extractHost()
 			shareURL := generateShareURL(selected, host)
 			a.detail = detailModel{
 				inbound:  selected,
@@ -121,17 +123,19 @@ func (a app) viewList() string {
 }
 
 func (a app) updateDetail(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
+	switch msg.(type) {
 	case inboundDeletedMsg:
 		a.state = stateList
 		a.detail = detailModel{}
-		return a, loadInbounds(a.client)
+		return a, loadInbounds(a.store)
+	}
+	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		if a.detail.confirm {
 			switch msg.String() {
 			case "y", "Y":
 				if a.detail.inbound != nil {
-					return a, deleteInbound(a.client, a.detail.inbound.ID)
+					return a, deleteInboundCmd(a.store, a.dataDir, a.detail.inbound.ID)
 				}
 			case "n", "N", "esc":
 				a.detail.confirm = false

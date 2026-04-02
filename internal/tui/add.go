@@ -6,17 +6,18 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/cosaria/sing-box/internal/store"
 )
 
 var protocols = []string{"shadowsocks", "vless", "trojan"}
 var protocolNames = []string{"Shadowsocks (SS2022)", "VLESS-REALITY", "Trojan"}
 
 type addModel struct {
-	step       int
-	protocol   int
-	portInput  textinput.Model
-	result     *Inbound
-	err        error
+	step      int
+	protocol  int
+	portInput textinput.Model
+	result    *store.Inbound
+	err       error
 }
 
 func newAddModel() addModel {
@@ -33,10 +34,16 @@ func newAddModel() addModel {
 
 func (m addModel) init() tea.Cmd { return nil }
 
-func createInbound(c *Client, protocol string, port uint16) tea.Cmd {
+func createInbound(st *store.Store, protocol string, port uint16) tea.Cmd {
 	return func() tea.Msg {
-		ib, err := c.CreateInbound(protocol, port)
-		if err != nil {
+		ib := &store.Inbound{
+			Protocol: protocol,
+			Port:     port,
+			Settings: "{}",
+		}
+		// 生成唯一 Tag
+		ib.Tag = fmt.Sprintf("%s-%d", protocol, port)
+		if err := st.CreateInbound(ib); err != nil {
 			return errMsg{err}
 		}
 		return inboundCreatedMsg{ib}
@@ -48,6 +55,7 @@ func (a app) updateAdd(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case inboundCreatedMsg:
 		a.add.result = msg.inbound
 		a.add.step = 3
+		reloadDaemon(a.dataDir)
 		return a, nil
 	case errMsg:
 		a.add.err = msg.err
@@ -105,7 +113,7 @@ func (a app) updateAdd(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.String() == "enter" {
 				portStr := a.add.portInput.Value()
 				portNum, _ := strconv.ParseUint(portStr, 10, 16)
-				return a, createInbound(a.client, protocols[a.add.protocol], uint16(portNum))
+				return a, createInbound(a.store, protocols[a.add.protocol], uint16(portNum))
 			}
 		case 3: // 结果
 			a.state = stateMenu
@@ -162,7 +170,7 @@ func (a app) viewAdd() string {
 			content = titleStyle.Render("创建失败") + "\n\n"
 			content += errorStyle.Render(a.add.err.Error()) + "\n"
 		} else if a.add.result != nil {
-			host := extractHost(a.listenAddr)
+			host := extractHost()
 			shareURL := generateShareURL(a.add.result, host)
 			content = titleStyle.Render("创建成功！") + "\n\n"
 			content += infoStyle.Render("Tag：  ") + normalStyle.Render(a.add.result.Tag) + "\n"

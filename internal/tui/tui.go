@@ -2,9 +2,13 @@ package tui
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"syscall"
 
 	tea "github.com/charmbracelet/bubbletea"
-
 	"github.com/cosaria/sing-box/internal/protocol"
 	"github.com/cosaria/sing-box/internal/store"
 )
@@ -22,30 +26,30 @@ const (
 )
 
 type app struct {
-	state      viewState
-	client     *Client
-	listenAddr string
-	subToken   string
-	menu       menuModel
-	add        addModel
-	list       listModel
-	detail     detailModel
-	edit       editModel
-	stats      statsModel
-	status     statusModel
-	err        error
-	message    string
-	width      int
-	height     int
+	state   viewState
+	store   *store.Store
+	dataDir string // 用于查找 PID 文件
+
+	menu   menuModel
+	add    addModel
+	list   listModel
+	detail detailModel
+	edit   editModel
+	stats  statsModel
+	status statusModel
+
+	err     error
+	message string
+	width   int
+	height  int
 }
 
-func newApp(client *Client, listenAddr, subToken string) app {
+func newApp(st *store.Store, dataDir string) app {
 	return app{
-		state:      stateMenu,
-		client:     client,
-		listenAddr: listenAddr,
-		subToken:   subToken,
-		menu:       newMenuModel(),
+		state:   stateMenu,
+		store:   st,
+		dataDir: dataDir,
+		menu:    newMenuModel(),
 	}
 }
 
@@ -116,9 +120,8 @@ func (a app) View() string {
 }
 
 // Run 启动 TUI 应用程序。
-func Run(listenAddr, token, subToken string) error {
-	client := NewClient("http://"+listenAddr, token)
-	a := newApp(client, listenAddr, subToken)
+func Run(st *store.Store, dataDir string) error {
+	a := newApp(st, dataDir)
 	p := tea.NewProgram(a, tea.WithAltScreen())
 	_, err := p.Run()
 	return err
@@ -127,16 +130,18 @@ func Run(listenAddr, token, subToken string) error {
 // Message types
 type errMsg struct{ err error }
 type clearMsg struct{}
-type inboundsLoadedMsg struct{ inbounds []Inbound }
-type inboundCreatedMsg struct{ inbound *Inbound }
+type inboundsLoadedMsg struct{ inbounds []*store.Inbound }
+type inboundCreatedMsg struct{ inbound *store.Inbound }
 type inboundDeletedMsg struct{}
-type inboundUpdatedMsg struct{ inbound *Inbound }
-type statusLoadedMsg struct{ status *StatusResp }
-type statsLoadedMsg struct{ stats []TrafficSummary }
+type inboundUpdatedMsg struct{}
+type statsLoadedMsg struct{ stats []store.TrafficSummary }
+type daemonStatusMsg struct{ running bool }
 
-func loadInbounds(c *Client) tea.Cmd {
+// Commands
+
+func loadInbounds(st *store.Store) tea.Cmd {
 	return func() tea.Msg {
-		list, err := c.ListInbounds()
+		list, err := st.ListInbounds()
 		if err != nil {
 			return errMsg{err}
 		}
@@ -144,19 +149,9 @@ func loadInbounds(c *Client) tea.Cmd {
 	}
 }
 
-func loadStatus(c *Client) tea.Cmd {
+func loadStats(st *store.Store) tea.Cmd {
 	return func() tea.Msg {
-		s, err := c.Status()
-		if err != nil {
-			return errMsg{err}
-		}
-		return statusLoadedMsg{s}
-	}
-}
-
-func loadStats(c *Client) tea.Cmd {
-	return func() tea.Msg {
-		stats, err := c.GetStats()
+		stats, err := st.GetTrafficSummary()
 		if err != nil {
 			return errMsg{err}
 		}
@@ -164,33 +159,61 @@ func loadStats(c *Client) tea.Cmd {
 	}
 }
 
-func generateShareURL(ib *Inbound, host string) string {
+func checkDaemon(dataDir string) tea.Cmd {
+	return func() tea.Msg {
+		running := isDaemonRunning(dataDir)
+		return daemonStatusMsg{running}
+	}
+}
+
+// reloadDaemon 通过 PID 文件向守护进程发送 SIGHUP 信号。
+func reloadDaemon(dataDir string) {
+	pidFile := filepath.Join(dataDir, "sing-box.pid")
+	data, err := os.ReadFile(pidFile)
+	if err != nil {
+		return
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil {
+		return
+	}
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		return
+	}
+	_ = process.Signal(syscall.SIGHUP)
+}
+
+func isDaemonRunning(dataDir string) bool {
+	pidFile := filepath.Join(dataDir, "sing-box.pid")
+	data, err := os.ReadFile(pidFile)
+	if err != nil {
+		return false
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil {
+		return false
+	}
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+	// 在 Unix 上 FindProcess 总是成功；用 signal(0) 检测进程是否存在。
+	err = process.Signal(syscall.Signal(0))
+	return err == nil
+}
+
+func generateShareURL(ib *store.Inbound, host string) string {
 	p := protocol.Get(ib.Protocol)
 	if p == nil {
 		return ""
 	}
-	storeIb := &store.Inbound{
-		ID:       ib.ID,
-		Tag:      ib.Tag,
-		Protocol: ib.Protocol,
-		Port:     ib.Port,
-		Settings: ib.Settings,
-	}
-	return p.GenerateURL(storeIb, host)
+	return p.GenerateURL(ib, host)
 }
 
-func extractHost(listenAddr string) string {
-	host := listenAddr
-	for i := len(host) - 1; i >= 0; i-- {
-		if host[i] == ':' {
-			host = host[:i]
-			break
-		}
-	}
-	if host == "127.0.0.1" || host == "0.0.0.0" || host == "" {
-		host = "YOUR_SERVER_IP"
-	}
-	return host
+func extractHost() string {
+	// TUI 独立模式下没有监听地址，使用占位符，用户需替换为服务器 IP。
+	return "YOUR_SERVER_IP"
 }
 
 // FormatBytes 将字节数格式化为人类可读的字符串。

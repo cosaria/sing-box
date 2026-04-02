@@ -44,20 +44,20 @@ func (a app) menuAction() (tea.Model, tea.Cmd) {
 	case 1: // 查看配置
 		a.state = stateList
 		a.list = newListModel()
-		return a, loadInbounds(a.client)
+		return a, loadInbounds(a.store)
 	case 2: // 修改配置
 		a.state = stateList
 		a.list = newListModel()
 		a.list.editMode = true
-		return a, loadInbounds(a.client)
+		return a, loadInbounds(a.store)
 	case 3: // 流量统计
 		a.state = stateStats
 		a.stats = newStatsModel()
-		return a, loadStats(a.client)
+		return a, loadStats(a.store)
 	case 4: // 服务状态
 		a.state = stateStatus
 		a.status = newStatusModel()
-		return a, loadStatus(a.client)
+		return a, checkDaemon(a.dataDir)
 	case 5:
 		return a, tea.Quit
 	}

@@ -2,17 +2,17 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
-	"github.com/cosaria/sing-box/internal/api"
 	"github.com/cosaria/sing-box/internal/engine"
 	"github.com/cosaria/sing-box/internal/platform"
 	"github.com/cosaria/sing-box/internal/service"
@@ -35,12 +35,10 @@ func main() {
 		Use:   "sing-box",
 		Short: "sing-box 管理面板",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			listenAddr, _ := cmd.Flags().GetString("listen")
 			dataDir, _ := cmd.Flags().GetString("data-dir")
-			return runTUI(listenAddr, dataDir)
+			return runTUI(dataDir)
 		},
 	}
-	rootCmd.Flags().String("listen", "127.0.0.1:9090", "API 监听地址")
 	rootCmd.Flags().String("data-dir", plat.DataDir, "数据目录")
 
 	rootCmd.AddCommand(serveCmd())
@@ -53,21 +51,18 @@ func main() {
 	}
 }
 
-// serveCmd 启动守护进程（HTTP API + sing-box 引擎），不启动 TUI。
+// serveCmd 启动守护进程（sing-box 引擎），不启动 TUI。
+// 守护进程将 PID 写入 <dataDir>/sing-box.pid，并监听 SIGHUP 重载。
 func serveCmd() *cobra.Command {
-	var (
-		listenAddr string
-		dataDir    string
-	)
+	var dataDir string
 	cmd := &cobra.Command{
 		Use:   "serve",
-		Short: "启动守护进程（HTTP API + sing-box 引擎）",
+		Short: "启动守护进程（sing-box 引擎）",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runServe(listenAddr, dataDir)
+			return runServe(dataDir)
 		},
 	}
 	plat := platform.Detect()
-	cmd.Flags().StringVar(&listenAddr, "listen", "127.0.0.1:9090", "API 监听地址")
 	cmd.Flags().StringVar(&dataDir, "data-dir", plat.DataDir, "数据目录")
 	return cmd
 }
@@ -144,97 +139,43 @@ func versionCmd() *cobra.Command {
 	}
 }
 
-// runTUI 启动后端组件并进入 TUI 交互界面，退出时优雅关闭所有组件。
-func runTUI(listenAddr, dataDir string) error {
+// runTUI 打开数据库并直接进入 TUI 交互界面（无 HTTP API）。
+// 配置变更通过向守护进程发送 SIGHUP 信号触发重载。
+func runTUI(dataDir string) error {
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		return fmt.Errorf("无法创建数据目录: %w", err)
 	}
 
-	dbPath := dataDir + "/panel.db"
+	dbPath := filepath.Join(dataDir, "panel.db")
 	st, err := store.Open(dbPath)
 	if err != nil {
 		return fmt.Errorf("无法打开数据库: %w", err)
 	}
 	defer st.Close()
 
-	apiToken, err := ensureToken(st, "api_token")
-	if err != nil {
-		return fmt.Errorf("无法初始化 API token: %w", err)
-	}
-
-	subToken, err := ensureToken(st, "sub_token")
-	if err != nil {
-		return fmt.Errorf("无法初始化订阅 token: %w", err)
-	}
-
-	plat := platform.Detect()
-	var svcMgr service.Manager
-	if mgr := service.NewManager(plat.InitSystem); mgr != nil {
-		svcMgr = mgr
-	}
-
-	eng := engine.New(st)
-	if err := eng.Start(); err != nil {
-		slog.Warn("引擎启动失败（可能没有配置）", "error", err)
-	}
-
-	collector := stats.NewCollector(eng.Tracker(), st)
-	collectorCtx, collectorCancel := context.WithCancel(context.Background())
-	go collector.Run(collectorCtx, 60*time.Second)
-
-	srv := api.NewServer(eng, st, svcMgr, listenAddr, apiToken, subToken)
-	if err := srv.Start(); err != nil {
-		collectorCancel()
-		return fmt.Errorf("无法启动 API 服务: %w", err)
-	}
-
-	slog.Info("sing-box 面板已启动（TUI 模式）",
-		"listen", listenAddr,
-		"data_dir", dataDir,
-	)
-
-	// 阻塞直到 TUI 退出
-	if err := tui.Run(listenAddr, apiToken, subToken); err != nil {
-		slog.Error("TUI 退出异常", "error", err)
-	}
-
-	// TUI 退出后优雅关闭
-	collectorCancel()
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	srv.Shutdown(shutdownCtx) //nolint:errcheck
-	eng.Stop()                //nolint:errcheck
-	return nil
+	return tui.Run(st, dataDir)
 }
 
-// runServe 启动守护进程，等待系统信号退出（无 TUI）。
-func runServe(listenAddr, dataDir string) error {
+// runServe 启动守护进程：写 PID 文件，启动引擎 + 流量收集，等待信号。
+// SIGHUP → 重载引擎，SIGINT/SIGTERM → 优雅退出。
+func runServe(dataDir string) error {
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		return fmt.Errorf("无法创建数据目录: %w", err)
 	}
 
-	dbPath := dataDir + "/panel.db"
+	// 写 PID 文件，供 TUI 通过 SIGHUP 通知守护进程。
+	pidFile := filepath.Join(dataDir, "sing-box.pid")
+	if err := writePID(pidFile); err != nil {
+		return fmt.Errorf("无法写入 PID 文件: %w", err)
+	}
+	defer os.Remove(pidFile)
+
+	dbPath := filepath.Join(dataDir, "panel.db")
 	st, err := store.Open(dbPath)
 	if err != nil {
 		return fmt.Errorf("无法打开数据库: %w", err)
 	}
 	defer st.Close()
-
-	apiToken, err := ensureToken(st, "api_token")
-	if err != nil {
-		return fmt.Errorf("无法初始化 API token: %w", err)
-	}
-
-	subToken, err := ensureToken(st, "sub_token")
-	if err != nil {
-		return fmt.Errorf("无法初始化订阅 token: %w", err)
-	}
-
-	plat := platform.Detect()
-	var svcMgr service.Manager
-	if mgr := service.NewManager(plat.InitSystem); mgr != nil {
-		svcMgr = mgr
-	}
 
 	eng := engine.New(st)
 	if err := eng.Start(); err != nil {
@@ -245,20 +186,10 @@ func runServe(listenAddr, dataDir string) error {
 	collectorCtx, collectorCancel := context.WithCancel(context.Background())
 	go collector.Run(collectorCtx, 60*time.Second)
 
-	srv := api.NewServer(eng, st, svcMgr, listenAddr, apiToken, subToken)
-	if err := srv.Start(); err != nil {
-		collectorCancel()
-		return fmt.Errorf("无法启动 API 服务: %w", err)
-	}
-
-	slog.Info("sing-box 面板已启动",
-		"listen", listenAddr,
+	slog.Info("sing-box 守护进程已启动",
+		"pid", os.Getpid(),
 		"data_dir", dataDir,
-		"init_system", plat.InitSystem,
 	)
-	fmt.Printf("\nAPI Token: %s\n", apiToken)
-	fmt.Printf("API 地址: http://%s\n", listenAddr)
-	fmt.Printf("订阅地址: http://%s/sub/%s\n\n", listenAddr, subToken)
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
@@ -276,30 +207,16 @@ func runServe(listenAddr, dataDir string) error {
 			collectorCancel()
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			srv.Shutdown(shutdownCtx) //nolint:errcheck
-			eng.Stop()                //nolint:errcheck
+			_ = shutdownCtx // eng.Stop 目前不接受 ctx
+			eng.Stop()      //nolint:errcheck
 			slog.Info("已关闭")
 			return nil
 		}
 	}
 }
 
-func ensureToken(st *store.Store, key string) (string, error) {
-	token, err := st.GetSetting(key)
-	if err != nil {
-		return "", err
-	}
-	if token == "" {
-		token = generateToken()
-		if err := st.SetSetting(key, token); err != nil {
-			return "", err
-		}
-	}
-	return token, nil
-}
-
-func generateToken() string {
-	b := make([]byte, 16)
-	rand.Read(b) //nolint:errcheck
-	return hex.EncodeToString(b)
+// writePID 将当前进程 PID 写入指定文件。
+func writePID(path string) error {
+	pid := strconv.Itoa(os.Getpid())
+	return os.WriteFile(path, []byte(strings.TrimSpace(pid)+"\n"), 0644)
 }

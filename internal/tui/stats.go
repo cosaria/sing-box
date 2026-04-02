@@ -4,10 +4,11 @@ import (
 	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/cosaria/sing-box/internal/store"
 )
 
 type statsModel struct {
-	stats []TrafficSummary
+	stats []store.TrafficSummary
 }
 
 func newStatsModel() statsModel { return statsModel{} }
@@ -21,7 +22,7 @@ func (a app) updateStats(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "esc", "q":
 			a.state = stateMenu
 		case "r":
-			return a, loadStats(a.client)
+			return a, loadStats(a.store)
 		}
 	}
 	return a, nil
