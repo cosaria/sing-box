@@ -17,8 +17,8 @@ builds:
       - -s -w -X main.Version={{.Version}}
 
 archives:
-  - format: binary
-    name_template: "{{ .Binary }}"
+  - format: tar.gz
+    name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}"
 
 checksum:
   name_template: "checksums.txt"
@@ -29,17 +29,19 @@ dockers:
     use: buildx
     goarch: amd64
     dockerfile: Dockerfile
+    extra_files:
+      - Dockerfile
     build_flag_templates:
       - "--platform=linux/amd64"
-      - "--build-arg=VERSION={{ .Version }}"
   - image_templates:
       - "ghcr.io/cosaria/sing-box:{{ .Version }}-arm64"
     use: buildx
     goarch: arm64
     dockerfile: Dockerfile
+    extra_files:
+      - Dockerfile
     build_flag_templates:
       - "--platform=linux/arm64"
-      - "--build-arg=VERSION={{ .Version }}"
 
 docker_manifests:
   - name_template: "ghcr.io/cosaria/sing-box:{{ .Version }}"
