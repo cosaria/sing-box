@@ -1,17 +1,12 @@
 package engine
 
 import (
-	"encoding/json"
 	"fmt"
 
+	"github.com/233boy/sing-box/internal/protocol"
 	"github.com/233boy/sing-box/internal/store"
 	"github.com/sagernet/sing-box/option"
 )
-
-type shadowsocksSettings struct {
-	Method   string `json:"method"`
-	Password string `json:"password"`
-}
 
 func buildOptions(inbounds []*store.Inbound) (option.Options, error) {
 	opts := option.Options{
@@ -22,7 +17,6 @@ func buildOptions(inbounds []*store.Inbound) (option.Options, error) {
 			{Type: "direct", Tag: "direct"},
 		},
 	}
-
 	for _, ib := range inbounds {
 		singIb, err := buildInbound(ib)
 		if err != nil {
@@ -34,29 +28,9 @@ func buildOptions(inbounds []*store.Inbound) (option.Options, error) {
 }
 
 func buildInbound(ib *store.Inbound) (option.Inbound, error) {
-	switch ib.Protocol {
-	case "shadowsocks":
-		return buildShadowsocks(ib)
-	default:
+	p := protocol.Get(ib.Protocol)
+	if p == nil {
 		return option.Inbound{}, fmt.Errorf("unsupported protocol: %s", ib.Protocol)
 	}
-}
-
-func buildShadowsocks(ib *store.Inbound) (option.Inbound, error) {
-	var ss shadowsocksSettings
-	if err := json.Unmarshal([]byte(ib.Settings), &ss); err != nil {
-		return option.Inbound{}, fmt.Errorf("invalid shadowsocks settings: %w", err)
-	}
-
-	return option.Inbound{
-		Type: "shadowsocks",
-		Tag:  ib.Tag,
-		Options: &option.ShadowsocksInboundOptions{
-			ListenOptions: option.ListenOptions{
-				ListenPort: ib.Port,
-			},
-			Method:   ss.Method,
-			Password: ss.Password,
-		},
-	}, nil
+	return p.BuildInbound(ib)
 }
