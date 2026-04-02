@@ -2,19 +2,19 @@ package tui
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/cosaria/sing-box/internal/protocol"
 	"github.com/cosaria/sing-box/internal/store"
 )
 
-var protocols = []string{"shadowsocks", "vless", "trojan"}
-var protocolNames = []string{"Shadowsocks (SS2022)", "VLESS-REALITY", "Trojan"}
-
 type addModel struct {
 	step      int
-	protocol  int
+	protocols []protocol.Protocol // 从注册表动态加载
+	protoIdx  int
 	portInput textinput.Model
 	result    *store.Inbound
 	err       error
@@ -25,27 +25,45 @@ func newAddModel() addModel {
 	ti.Placeholder = "输入端口（1-65535）"
 	ti.CharLimit = 5
 	ti.Width = 20
+
+	// 动态获取已注册协议并按名称排序
+	protos := protocol.All()
+	sort.Slice(protos, func(i, j int) bool {
+		return protos[i].Name() < protos[j].Name()
+	})
+
 	return addModel{
 		step:      0,
-		protocol:  0,
+		protocols: protos,
+		protoIdx:  0,
 		portInput: ti,
 	}
 }
 
 func (m addModel) init() tea.Cmd { return nil }
 
-func createInbound(st *store.Store, protocol string, port uint16) tea.Cmd {
+// createInbound 调用协议注册表生成默认配置并写入 store。
+func createInbound(st *store.Store, dataDir string, proto string, port uint16) tea.Cmd {
 	return func() tea.Msg {
-		ib := &store.Inbound{
-			Protocol: protocol,
-			Port:     port,
-			Settings: "{}",
+		p := protocol.Get(proto)
+		if p == nil {
+			return errMsg{fmt.Errorf("不支持的协议: %s", proto)}
 		}
-		// 生成唯一 Tag
-		ib.Tag = fmt.Sprintf("%s-%d", protocol, port)
+		settings, err := p.DefaultSettings(port)
+		if err != nil {
+			return errMsg{fmt.Errorf("生成默认配置失败: %w", err)}
+		}
+		tag := fmt.Sprintf("%s-%d", proto, port)
+		ib := &store.Inbound{
+			Tag:      tag,
+			Protocol: proto,
+			Port:     port,
+			Settings: settings,
+		}
 		if err := st.CreateInbound(ib); err != nil {
 			return errMsg{err}
 		}
+		reloadDaemon(dataDir)
 		return inboundCreatedMsg{ib}
 	}
 }
@@ -55,7 +73,7 @@ func (a app) updateAdd(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case inboundCreatedMsg:
 		a.add.result = msg.inbound
 		a.add.step = 3
-		reloadDaemon(a.dataDir)
+		a.add.err = nil
 		return a, nil
 	case errMsg:
 		a.add.err = msg.err
@@ -81,17 +99,20 @@ func (a app) updateAdd(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case 0: // 协议选择
 			switch msg.String() {
 			case "up", "k":
-				if a.add.protocol > 0 {
-					a.add.protocol--
+				if a.add.protoIdx > 0 {
+					a.add.protoIdx--
 				}
 			case "down", "j":
-				if a.add.protocol < len(protocols)-1 {
-					a.add.protocol++
+				if a.add.protoIdx < len(a.add.protocols)-1 {
+					a.add.protoIdx++
 				}
 			case "enter":
-				a.add.step = 1
-				a.add.portInput.Focus()
+				if len(a.add.protocols) > 0 {
+					a.add.step = 1
+					a.add.portInput.Focus()
+				}
 			}
+
 		case 1: // 端口输入
 			switch msg.String() {
 			case "enter":
@@ -109,13 +130,16 @@ func (a app) updateAdd(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.add.portInput, cmd = a.add.portInput.Update(msg)
 				return a, cmd
 			}
+
 		case 2: // 确认
 			if msg.String() == "enter" {
 				portStr := a.add.portInput.Value()
 				portNum, _ := strconv.ParseUint(portStr, 10, 16)
-				return a, createInbound(a.store, protocols[a.add.protocol], uint16(portNum))
+				selectedProto := a.add.protocols[a.add.protoIdx].Name()
+				return a, createInbound(a.store, a.dataDir, selectedProto, uint16(portNum))
 			}
-		case 3: // 结果
+
+		case 3: // 结果：任意键返回
 			a.state = stateMenu
 			a.add = newAddModel()
 			return a, nil
@@ -135,23 +159,31 @@ func (a app) viewAdd() string {
 	var content string
 
 	switch a.add.step {
-	case 0:
+	case 0: // 协议选择
 		content = titleStyle.Render("添加入站配置") + "\n\n"
-		content += dimStyle.Render("选择协议：") + "\n\n"
-		for i, name := range protocolNames {
-			cursor := "  "
-			style := normalStyle
-			if a.add.protocol == i {
-				cursor = "> "
-				style = selectedStyle
+		if len(a.add.protocols) == 0 {
+			content += errorStyle.Render("无可用协议，请先注册协议。") + "\n"
+		} else {
+			content += dimStyle.Render("选择协议：") + "\n\n"
+			for i, p := range a.add.protocols {
+				cursor := "  "
+				style := normalStyle
+				if a.add.protoIdx == i {
+					cursor = "> "
+					style = selectedStyle
+				}
+				content += fmt.Sprintf("%s%s\n", cursor, style.Render(p.DisplayName()))
 			}
-			content += fmt.Sprintf("%s%s\n", cursor, style.Render(name))
 		}
 		content += "\n" + dimStyle.Render("↑↓ 选择  Enter 确认  Esc 返回")
 
-	case 1:
+	case 1: // 端口输入
+		protoDisplay := ""
+		if len(a.add.protocols) > 0 {
+			protoDisplay = a.add.protocols[a.add.protoIdx].DisplayName()
+		}
 		content = titleStyle.Render("添加入站配置") + "\n\n"
-		content += infoStyle.Render("协议："+protocolNames[a.add.protocol]) + "\n\n"
+		content += infoStyle.Render("协议：") + normalStyle.Render(protoDisplay) + "\n\n"
 		content += dimStyle.Render("输入监听端口：") + "\n"
 		content += a.add.portInput.View() + "\n"
 		if a.add.err != nil {
@@ -159,13 +191,17 @@ func (a app) viewAdd() string {
 		}
 		content += "\n" + dimStyle.Render("Enter 下一步  Esc 返回")
 
-	case 2:
+	case 2: // 确认
+		protoDisplay := ""
+		if len(a.add.protocols) > 0 {
+			protoDisplay = a.add.protocols[a.add.protoIdx].DisplayName()
+		}
 		content = titleStyle.Render("确认创建") + "\n\n"
-		content += infoStyle.Render("协议：  ") + normalStyle.Render(protocolNames[a.add.protocol]) + "\n"
+		content += infoStyle.Render("协议：  ") + normalStyle.Render(protoDisplay) + "\n"
 		content += infoStyle.Render("端口：  ") + normalStyle.Render(a.add.portInput.Value()) + "\n"
 		content += "\n" + dimStyle.Render("Enter 确认创建  Esc 返回")
 
-	case 3:
+	case 3: // 结果
 		if a.add.err != nil {
 			content = titleStyle.Render("创建失败") + "\n\n"
 			content += errorStyle.Render(a.add.err.Error()) + "\n"

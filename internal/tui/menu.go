@@ -57,7 +57,7 @@ func (a app) menuAction() (tea.Model, tea.Cmd) {
 	case 4: // 服务状态
 		a.state = stateStatus
 		a.status = newStatusModel()
-		return a, checkDaemon(a.dataDir)
+		return a, checkDaemonFull(a)
 	case 5:
 		return a, tea.Quit
 	}
