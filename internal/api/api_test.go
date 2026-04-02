@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	_ "github.com/233boy/sing-box/internal/protocol"
 	"github.com/233boy/sing-box/internal/store"
 )
 
@@ -80,8 +81,8 @@ func TestCreateInbound(t *testing.T) {
 
 	var resp map[string]any
 	json.NewDecoder(w.Body).Decode(&resp)
-	if resp["tag"] != "ss-12345" {
-		t.Errorf("tag = %v, want 'ss-12345'", resp["tag"])
+	if resp["tag"] != "shadowsocks-12345" {
+		t.Errorf("tag = %v, want 'shadowsocks-12345'", resp["tag"])
 	}
 	if eng.reloaded != 1 {
 		t.Errorf("engine.Reload() called %d times, want 1", eng.reloaded)
@@ -166,5 +167,61 @@ func TestReloadEndpoint(t *testing.T) {
 	}
 	if eng.reloaded != 1 {
 		t.Errorf("engine.Reload() called %d times, want 1", eng.reloaded)
+	}
+}
+
+func TestCreateInboundAutoSettings(t *testing.T) {
+	srv, _, eng := setupTestServer(t)
+	body := `{"protocol":"shadowsocks","port":8388}`
+	req := httptest.NewRequest("POST", "/api/inbounds", bytes.NewBufferString(body))
+	req.Header.Set("Authorization", "Bearer test-token")
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.router.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Errorf("status = %d, want %d; body = %s", w.Code, http.StatusCreated, w.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp["tag"] != "shadowsocks-8388" {
+		t.Errorf("tag = %v, want 'shadowsocks-8388'", resp["tag"])
+	}
+	settings, ok := resp["settings"].(string)
+	if !ok || settings == "" || settings == "{}" {
+		t.Errorf("settings should be auto-generated, got %v", resp["settings"])
+	}
+	if eng.reloaded != 1 {
+		t.Errorf("engine.Reload() called %d times, want 1", eng.reloaded)
+	}
+}
+
+func TestCreateInboundVLESS(t *testing.T) {
+	srv, _, _ := setupTestServer(t)
+	body := `{"protocol":"vless","port":443}`
+	req := httptest.NewRequest("POST", "/api/inbounds", bytes.NewBufferString(body))
+	req.Header.Set("Authorization", "Bearer test-token")
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.router.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Errorf("status = %d, want %d; body = %s", w.Code, http.StatusCreated, w.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp["tag"] != "vless-443" {
+		t.Errorf("tag = %v, want 'vless-443'", resp["tag"])
+	}
+}
+
+func TestCreateInboundUnsupportedProtocol(t *testing.T) {
+	srv, _, _ := setupTestServer(t)
+	body := `{"protocol":"unknown","port":1234}`
+	req := httptest.NewRequest("POST", "/api/inbounds", bytes.NewBufferString(body))
+	req.Header.Set("Authorization", "Bearer test-token")
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusBadRequest)
 	}
 }

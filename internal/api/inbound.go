@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/233boy/sing-box/internal/protocol"
 	"github.com/233boy/sing-box/internal/store"
 	"github.com/go-chi/chi/v5"
 )
@@ -50,15 +51,25 @@ func (s *Server) handleCreateInbound(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	settingsStr := "{}"
-	if req.Settings != nil {
+	p := protocol.Get(req.Protocol)
+	if p == nil {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("unsupported protocol: %s", req.Protocol))
+		return
+	}
+
+	var settingsStr string
+	if req.Settings == nil || string(req.Settings) == "{}" || string(req.Settings) == "null" {
+		generated, err := p.DefaultSettings(req.Port)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to generate settings: "+err.Error())
+			return
+		}
+		settingsStr = generated
+	} else {
 		settingsStr = string(req.Settings)
 	}
 
-	tag := fmt.Sprintf("ss-%d", req.Port)
-	if req.Protocol != "shadowsocks" {
-		tag = fmt.Sprintf("%s-%d", req.Protocol, req.Port)
-	}
+	tag := fmt.Sprintf("%s-%d", req.Protocol, req.Port)
 
 	ib := &store.Inbound{
 		Tag:      tag,
@@ -73,7 +84,6 @@ func (s *Server) handleCreateInbound(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.engine.Reload() //nolint:errcheck
-
 	writeJSON(w, http.StatusCreated, ib)
 }
 
