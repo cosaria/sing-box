@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"strconv"
 
@@ -84,7 +85,7 @@ func (s *Store) migrate() error {
 func (s *Store) GetSetting(key string) (string, error) {
 	var value string
 	err := s.db.QueryRow("SELECT value FROM settings WHERE key = ?", key).Scan(&value)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return "", nil
 	}
 	return value, err

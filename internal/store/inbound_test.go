@@ -111,6 +111,25 @@ func TestDeleteInbound(t *testing.T) {
 	}
 }
 
+func TestUpdateInboundNotFound(t *testing.T) {
+	s := mustOpenTestStore(t)
+
+	ib := &Inbound{ID: 999, Tag: "ss-999", Protocol: "shadowsocks", Port: 999, Settings: "{}"}
+	err := s.UpdateInbound(ib)
+	if err != ErrNotFound {
+		t.Fatalf("expected ErrNotFound, got: %v", err)
+	}
+}
+
+func TestDeleteInboundNotFound(t *testing.T) {
+	s := mustOpenTestStore(t)
+
+	err := s.DeleteInbound(999)
+	if err != ErrNotFound {
+		t.Fatalf("expected ErrNotFound, got: %v", err)
+	}
+}
+
 func TestCreateDuplicateTag(t *testing.T) {
 	s := mustOpenTestStore(t)
 
