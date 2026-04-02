@@ -286,3 +286,32 @@ func TestSubscriptionInvalidToken(t *testing.T) {
 		t.Errorf("status = %d, want %d", w.Code, http.StatusUnauthorized)
 	}
 }
+
+func TestEngineStart(t *testing.T) {
+	srv, _, eng := setupTestServer(t)
+	req := httptest.NewRequest("POST", "/api/engine/start", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	w := httptest.NewRecorder()
+	srv.router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+	if !eng.running {
+		t.Error("engine should be running after start")
+	}
+}
+
+func TestEngineStop(t *testing.T) {
+	srv, _, eng := setupTestServer(t)
+	eng.running = true
+	req := httptest.NewRequest("POST", "/api/engine/stop", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	w := httptest.NewRecorder()
+	srv.router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+	if eng.running {
+		t.Error("engine should be stopped after stop")
+	}
+}

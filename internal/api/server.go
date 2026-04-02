@@ -43,6 +43,8 @@ func NewServer(engine EngineController, st *store.Store, svc any, listenAddr, to
 		r.Use(tokenAuth(token))
 		r.Get("/api/status", s.handleStatus)
 		r.Post("/api/reload", s.handleReload)
+		r.Post("/api/engine/start", s.handleEngineStart)
+		r.Post("/api/engine/stop", s.handleEngineStop)
 		r.Get("/api/inbounds", s.handleListInbounds)
 		r.Post("/api/inbounds", s.handleCreateInbound)
 		r.Get("/api/inbounds/{id}", s.handleGetInbound)
