@@ -4,97 +4,107 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A **sing-box one-click installation & management script** (by cosaria) for Linux servers. Automates installing, configuring, and managing the [sing-box](https://github.com/SagerNet/sing-box) proxy core with multiple protocol support. Written entirely in Bash.
+**sing-box panel** — a TUI-based management panel for [sing-box](https://github.com/SagerNet/sing-box) proxy core. Single Go binary embedding sing-box as a library, with SQLite storage, multi-protocol support, and terminal UI for interactive management.
 
-**Primary language:** Chinese (all user-facing strings, comments, and docs are in Chinese).
+**Primary language:** Go. All user-facing strings in Chinese.
 
 ## Architecture
 
-### Startup Chain
-
 ```
-sing-box.sh  →  src/runtime/bootstrap.sh  →  src/runtime/init.sh
-     │                    │
-     │           bootstrap_main():
-     │             1. init_env()           ← from init.sh
-     │             2. load_runtime_modules()
-     │             3. app_main()           → menu_main()
-     │
-     sets SCRIPT_VERSION, SH_DIR
+sing-box serve (systemd daemon)          sing-box (TUI management)
+├── Engine (sing-box core)                ├── Direct SQLite access
+├── Stats Collector (60s interval)        ├── Add/Edit/Delete inbounds
+├── PID file (for SIGHUP signal)          ├── View share links + QR codes
+└── SIGHUP → reload engine config         └── SIGHUP → notify daemon to reload
 ```
 
-- `sing-box.sh` — Entry point (symlinked to `/usr/local/bin/sing-box`). Sets `SCRIPT_VERSION` and `SH_DIR`, sources bootstrap.
-- `src/runtime/bootstrap.sh` — Orchestrates startup: initializes env, loads all modules in order, calls `app_main()`. Module load order matters (e.g., `protocols/registry.sh` triggers `protocol_load_all` immediately after loading).
-- `src/runtime/init.sh` — Pure initialization: paths, platform detection, core status. **Must be passive** (sourcing it must not trigger any action). Defines the `load()` function used to source all other modules.
-- `install.sh` — Standalone installer. Downloads core binary, scripts, and jq. Sources `src/core/systemd.sh` directly for service setup.
+**No HTTP API.** TUI talks directly to SQLite. Daemon and TUI coordinate via PID file + Unix signals.
 
-### Module Layout (`src/`)
+### Module Layout (`internal/`)
 
 | Directory | Purpose |
 |---|---|
-| `runtime/` | Bootstrap and initialization (no business logic) |
-| `ui/` | Terminal UI primitives (`ui.sh`) and interactive menus (`menu.sh`) |
-| `protocols/` | Protocol registry + per-protocol implementations |
-| `config/` | Config file CRUD (`config.sh`) and share/QR display (`share.sh`) |
-| `core/` | Service management (`service.sh`), downloads (`download.sh`), systemd/openrc units (`systemd.sh`) |
+| `store/` | SQLite connection, migrations, inbound CRUD, traffic log queries |
+| `engine/` | sing-box lifecycle (Start/Stop/Reload), config builder, crash recovery |
+| `protocol/` | Protocol interface + registry, Shadowsocks/VLESS/Trojan implementations |
+| `stats/` | ConnectionTracker for per-inbound traffic counting, periodic DB flush |
+| `tui/` | Bubbletea TUI: menu, add wizard, list/detail, edit, stats, status, QR |
+| `platform/` | OS/arch/init-system detection, path constants |
+| `service/` | systemd/OpenRC service install/uninstall with path validation |
+| `updater/` | Self-update via GitHub Releases with atomic binary replace |
 
 ### Protocol System
 
-Protocols are self-contained files in `src/protocols/`. Each file must:
-1. Set `PROTOCOL_NAME` (e.g., `"Shadowsocks"`)
-2. Define `PROTOCOL_EDITABLE` array (fields the user can modify)
-3. Implement: `protocol_ask()`, `protocol_json()`, `protocol_url()`, `protocol_info()`, `protocol_parse()`
+Protocols are self-contained files in `internal/protocol/`. Each implements the `Protocol` interface:
+- `Name()`, `DisplayName()` — identification
+- `DefaultSettings(port)` — auto-generate config (UUID passwords, X25519 keys)
+- `BuildInbound(ib)` — convert store.Inbound to sing-box option.Inbound
+- `GenerateURL(ib, host)` — produce share link (ss://, vless://, trojan://)
 
-`src/protocols/registry.sh` provides the registry. `protocol_load_all()` scans `src/protocols/*.sh` (excluding itself), sources each file, and registers it by `PROTOCOL_NAME`. Currently only Shadowsocks is implemented.
+Protocols self-register via `init()`. Registry: `protocol.Get("shadowsocks")`.
+
+Currently implemented: **Shadowsocks (SS2022)**, **VLESS-REALITY**, **Trojan**.
 
 ### State Management
 
-- `cfg` — Bash associative array (`declare -A cfg`), holds the current config being viewed/edited (keys: `protocol`, `port`, `password`, `method`, `config_file`).
-- `CORE_DIR`, `CORE_BIN`, `CONF_DIR`, `CONFIG_JSON`, `LOG_DIR`, `SH_BIN` — Uppercase path globals set by `init_paths()`.
-- `ARCH`, `INIT_SYSTEM`, `PKG_CMD` — Platform globals set by `init_platform()`.
-- `CORE_VERSION`, `CORE_RUNNING` — Runtime state refreshed by `refresh_core_version()` / `refresh_core_status()`.
+- `store.Store` — SQLite with WAL mode, busy_timeout(5000), migrations
+- `store.Inbound` — tag, protocol, port, settings (JSON string)
+- `store.TrafficLog` / `TrafficSummary` — per-inbound upload/download stats
+- `engine.Engine` — mutex-protected sing-box box.Box lifecycle, crash counter (3 in 60s = refuse)
+- `stats.Tracker` — atomic per-inbound byte counters via ConnectionTracker interface
 
-### Config Generation Pattern
+### Cobra Commands
 
-Configs are per-protocol JSON files stored in `$CONF_DIR/` (e.g., `Shadowsocks-12345.json`). Each contains an `inbounds` array. The main `config.json` holds log/dns/outbound settings. sing-box loads both via `run -c $CONFIG_JSON -C $CONF_DIR`.
+```
+sing-box              # TUI mode (interactive management)
+sing-box serve        # Daemon mode (engine + stats, for systemd)
+sing-box update       # Self-update from GitHub Releases
+sing-box service install/uninstall  # System service management
+sing-box version      # Print version info
+```
 
 ## Development
-
-### Testing Locally
-
-```bash
-bash install.sh -l     # Install from current directory instead of downloading from GitHub
-```
 
 ### Running Tests
 
 ```bash
-bash tests/entrypoint_smoke.sh     # Verifies bootstrap chain, module loading, and menu rendering
-bash tests/init_module_smoke.sh    # Verifies init.sh is passive and exposes expected functions
+go test ./... -v -count=1 -race
 ```
 
-Tests use mock binaries and function overrides to test in isolation. No test framework — each script exits 0 on pass, non-zero on fail.
+Tests use in-memory SQLite (`:memory:`). No external dependencies needed.
 
-### Install Flags
+### Building
 
 ```bash
-bash install.sh -f /path/to/sing-box.tar.gz  # Use custom core binary
-bash install.sh -p http://127.0.0.1:2333      # Use proxy for downloads
-bash install.sh -v v1.8.13                     # Specify core version
+go build -o sing-box ./cmd/sing-box/
 ```
 
-### After Installation
+Cross-compile:
+```bash
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o sing-box-linux-amd64 ./cmd/sing-box/
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o sing-box-linux-arm64 ./cmd/sing-box/
+```
 
-`sing-box` command runs the management script, not the raw binary. Use `sing-box bin ...` to invoke the actual sing-box binary.
+Version injection:
+```bash
+go build -ldflags "-X main.Version=v0.1.0" -o sing-box ./cmd/sing-box/
+```
+
+### Install (local dev)
+
+```bash
+bash install.sh -l    # Build and install from current directory
+```
 
 ## Conventions
 
-- **Globals:** UPPER_CASE for all globals (paths, platform, state). No `is_` prefix in the new modules.
-- **Module loading:** `load("path/relative/to/src")` sources a module. Modules must be passive (sourcing = define functions only, no side effects).
-- **UI functions:** All user-facing output goes through `ui_msg()`, `ui_err()`, `ui_warn()`, `ui_header()`, `ui_menu()`, `ui_ask()` from `src/ui/ui.sh`. Color helpers: `red()`, `green()`, `yellow()`, `cyan()`.
-- **Service abstraction:** `_service_do(action)` wraps systemd/openrc differences. Never call `systemctl` or `rc-service` directly in business logic.
-- **Error handling:** `ui_err()` prints and exits. Modules return non-zero on failure; `bootstrap_main()` checks each step and aborts on failure.
-- **Protocol contract:** Adding a new protocol = one new file in `src/protocols/` implementing the 5 required functions. No registration code needed elsewhere.
+- **Globals:** UPPER_CASE for constants, CamelCase for exported Go symbols
+- **Module path:** `github.com/cosaria/sing-box`
+- **Protocol contract:** Adding a new protocol = one new file in `internal/protocol/` implementing the Protocol interface with `init()` self-registration
+- **Service management:** Never call systemctl/rc-service directly — use `internal/service/` abstraction
+- **TUI pattern:** Bubbletea Model/Update/View, state machine in tui.go, one file per view
+- **Error handling:** Wrap with context (`fmt.Errorf("failed to X: %w", err)`), engine panics caught by recover
+- **Path validation:** Service install paths validated against `^[a-zA-Z0-9/._-]+$`
 
 ## Skill routing
 
