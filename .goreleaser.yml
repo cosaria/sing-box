@@ -17,8 +17,8 @@ builds:
       - -s -w -X main.Version={{.Version}}
 
 archives:
-  - format: tar.gz
-    name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}"
+  - format: binary
+    name_template: "sing-box-{{ .Os }}-{{ .Arch }}"
 
 checksum:
   name_template: "checksums.txt"
