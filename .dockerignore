@@ -1,0 +1,8 @@
+.git
+.DS_Store
+docs/
+*.md
+.goreleaser.yml
+.gstack/
+sing-box
+sing-box-*

@@ -25,6 +25,18 @@ bash <(curl -sL https://raw.githubusercontent.com/cosaria/sing-box/main/install.
 - `-v v0.1.0` 指定版本
 - `-p http://proxy:port` 使用代理下载
 
+### Docker
+
+```bash
+docker run -d --name sing-box \
+  --network host \
+  -v sing-box-data:/etc/sing-box \
+  ghcr.io/cosaria/sing-box:latest
+
+# TUI 管理（attach 到容器）
+docker exec -it sing-box sing-box
+```
+
 ## 使用
 
 ```bash

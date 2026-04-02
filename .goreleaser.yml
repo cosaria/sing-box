@@ -23,6 +23,34 @@ archives:
 checksum:
   name_template: "checksums.txt"
 
+dockers:
+  - image_templates:
+      - "ghcr.io/cosaria/sing-box:{{ .Version }}-amd64"
+    use: buildx
+    goarch: amd64
+    dockerfile: Dockerfile
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--build-arg=VERSION={{ .Version }}"
+  - image_templates:
+      - "ghcr.io/cosaria/sing-box:{{ .Version }}-arm64"
+    use: buildx
+    goarch: arm64
+    dockerfile: Dockerfile
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--build-arg=VERSION={{ .Version }}"
+
+docker_manifests:
+  - name_template: "ghcr.io/cosaria/sing-box:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/cosaria/sing-box:{{ .Version }}-amd64"
+      - "ghcr.io/cosaria/sing-box:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/cosaria/sing-box:latest"
+    image_templates:
+      - "ghcr.io/cosaria/sing-box:{{ .Version }}-amd64"
+      - "ghcr.io/cosaria/sing-box:{{ .Version }}-arm64"
+
 release:
   github:
     owner: cosaria
