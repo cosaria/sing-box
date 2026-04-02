@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"time"
@@ -41,7 +42,7 @@ func (s *Store) GetInbound(id int64) (*Inbound, error) {
 		id,
 	).Scan(&ib.ID, &ib.Tag, &ib.Protocol, &ib.Port, &ib.Settings, &ib.CreatedAt, &ib.UpdatedAt)
 	if err != nil {
-		if err.Error() == "sql: no rows in result set" {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
 		return nil, fmt.Errorf("failed to get inbound: %w", err)
