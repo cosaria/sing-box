@@ -149,7 +149,7 @@ TUI 的每个视图只调 client 方法，不直接处理 HTTP。
 ### 使用方式
 
 ```bash
-bash <(curl -sL https://raw.githubusercontent.com/233boy/sing-box/main/install.sh)
+bash <(curl -sL https://raw.githubusercontent.com/cosaria/sing-box/main/install.sh)
 ```
 
 ### 安装流程
@@ -183,7 +183,7 @@ sing-box version            # 显示版本号
 
 ### 自更新流程（`sing-box update`）
 
-1. 请求 GitHub API `repos/233boy/sing-box/releases/latest` 获取最新版本号
+1. 请求 GitHub API `repos/cosaria/sing-box/releases/latest` 获取最新版本号
 2. 对比编译时注入的 `main.Version`
 3. 已是最新 → 提示并退出
 4. 下载对应平台的新二进制到临时文件

@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.26, sing-box v1.13.5 (embedded), chi/v5, modernc.org/sqlite, crypto/ecdh (X25519)
 
-**Module path:** `github.com/233boy/sing-box`
+**Module path:** `github.com/cosaria/sing-box`
 
 ---
 
@@ -76,7 +76,7 @@ package protocol
 import (
 	"testing"
 
-	"github.com/233boy/sing-box/internal/store"
+	"github.com/cosaria/sing-box/internal/store"
 	"github.com/sagernet/sing-box/option"
 )
 
@@ -158,7 +158,7 @@ import (
 	"crypto/rand"
 	"fmt"
 
-	"github.com/233boy/sing-box/internal/store"
+	"github.com/cosaria/sing-box/internal/store"
 	"github.com/sagernet/sing-box/option"
 )
 
@@ -248,7 +248,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/233boy/sing-box/internal/store"
+	"github.com/cosaria/sing-box/internal/store"
 )
 
 func TestShadowsocksDefaultSettings(t *testing.T) {
@@ -355,7 +355,7 @@ import (
 	"fmt"
 	"net/url"
 
-	"github.com/233boy/sing-box/internal/store"
+	"github.com/cosaria/sing-box/internal/store"
 	"github.com/sagernet/sing-box/option"
 )
 
@@ -485,7 +485,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/233boy/sing-box/internal/store"
+	"github.com/cosaria/sing-box/internal/store"
 )
 
 func TestVLESSDefaultSettings(t *testing.T) {
@@ -596,7 +596,7 @@ import (
 	"fmt"
 	"net/url"
 
-	"github.com/233boy/sing-box/internal/store"
+	"github.com/cosaria/sing-box/internal/store"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing/common/json/badoption"
 )
@@ -757,7 +757,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/233boy/sing-box/internal/store"
+	"github.com/cosaria/sing-box/internal/store"
 )
 
 func TestTrojanDefaultSettings(t *testing.T) {
@@ -846,7 +846,7 @@ import (
 	"fmt"
 	"net/url"
 
-	"github.com/233boy/sing-box/internal/store"
+	"github.com/cosaria/sing-box/internal/store"
 	"github.com/sagernet/sing-box/option"
 )
 
@@ -943,10 +943,10 @@ package engine
 import (
 	"testing"
 
-	"github.com/233boy/sing-box/internal/store"
+	"github.com/cosaria/sing-box/internal/store"
 
 	// Import protocol package to trigger init() registrations
-	_ "github.com/233boy/sing-box/internal/protocol"
+	_ "github.com/cosaria/sing-box/internal/protocol"
 )
 
 func TestBuildShadowsocksInbound(t *testing.T) {
@@ -1055,8 +1055,8 @@ package engine
 import (
 	"fmt"
 
-	"github.com/233boy/sing-box/internal/protocol"
-	"github.com/233boy/sing-box/internal/store"
+	"github.com/cosaria/sing-box/internal/protocol"
+	"github.com/cosaria/sing-box/internal/store"
 	"github.com/sagernet/sing-box/option"
 )
 
@@ -1201,9 +1201,9 @@ In `internal/api/inbound.go`, update the import block to add the protocol packag
 
 Add to imports:
 ```go
-"github.com/233boy/sing-box/internal/protocol"
+"github.com/cosaria/sing-box/internal/protocol"
 // Import all protocol implementations
-_ "github.com/233boy/sing-box/internal/protocol"
+_ "github.com/cosaria/sing-box/internal/protocol"
 ```
 
 Note: The blank import is only needed if the api package doesn't already transitively import protocol. Since protocol files use `init()` for registration, at least one import is needed somewhere in the import chain.
@@ -1702,7 +1702,7 @@ package stats
 import (
 	"testing"
 
-	"github.com/233boy/sing-box/internal/store"
+	"github.com/cosaria/sing-box/internal/store"
 )
 
 func TestCollectorFlush(t *testing.T) {
@@ -1782,7 +1782,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/233boy/sing-box/internal/store"
+	"github.com/cosaria/sing-box/internal/store"
 )
 
 // Collector periodically flushes tracker deltas to the database.
@@ -1867,7 +1867,7 @@ In `internal/engine/engine.go`, make these changes:
 
 Add import:
 ```go
-"github.com/233boy/sing-box/internal/stats"
+"github.com/cosaria/sing-box/internal/stats"
 ```
 
 Add `tracker` field to Engine struct:
@@ -2039,7 +2039,7 @@ package api
 import (
 	"net/http"
 
-	"github.com/233boy/sing-box/internal/store"
+	"github.com/cosaria/sing-box/internal/store"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -2082,11 +2082,11 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/233boy/sing-box/internal/protocol"
+	"github.com/cosaria/sing-box/internal/protocol"
 	"github.com/go-chi/chi/v5"
 
 	// Ensure all protocols are registered
-	_ "github.com/233boy/sing-box/internal/protocol"
+	_ "github.com/cosaria/sing-box/internal/protocol"
 )
 
 func (s *Server) handleSubscription(w http.ResponseWriter, r *http.Request) {
@@ -2140,7 +2140,7 @@ import (
 	"net"
 	"net/http"
 
-	"github.com/233boy/sing-box/internal/store"
+	"github.com/cosaria/sing-box/internal/store"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -2259,16 +2259,16 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/233boy/sing-box/internal/api"
-	"github.com/233boy/sing-box/internal/engine"
-	"github.com/233boy/sing-box/internal/platform"
-	"github.com/233boy/sing-box/internal/service"
-	"github.com/233boy/sing-box/internal/stats"
-	"github.com/233boy/sing-box/internal/store"
+	"github.com/cosaria/sing-box/internal/api"
+	"github.com/cosaria/sing-box/internal/engine"
+	"github.com/cosaria/sing-box/internal/platform"
+	"github.com/cosaria/sing-box/internal/service"
+	"github.com/cosaria/sing-box/internal/stats"
+	"github.com/cosaria/sing-box/internal/store"
 	"github.com/spf13/cobra"
 
 	// Register all protocol implementations
-	_ "github.com/233boy/sing-box/internal/protocol"
+	_ "github.com/cosaria/sing-box/internal/protocol"
 )
 
 func main() {

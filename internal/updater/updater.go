@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-const defaultAPIURL = "https://api.github.com/repos/233boy/sing-box/releases/latest"
+const defaultAPIURL = "https://api.github.com/repos/cosaria/sing-box/releases/latest"
 
 type githubRelease struct {
 	TagName string `json:"tag_name"`
@@ -73,7 +73,7 @@ func checkLatestVersion(apiURL string) (version string, downloadURL string, err 
 			return release.TagName, asset.BrowserDownloadURL, nil
 		}
 	}
-	downloadURL = fmt.Sprintf("https://github.com/233boy/sing-box/releases/download/%s/%s", release.TagName, archName)
+	downloadURL = fmt.Sprintf("https://github.com/cosaria/sing-box/releases/download/%s/%s", release.TagName, archName)
 	return release.TagName, downloadURL, nil
 }
 

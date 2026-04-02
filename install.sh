@@ -2,9 +2,9 @@
 set -euo pipefail
 
 # sing-box panel 安装脚本
-# 用法: bash <(curl -sL https://raw.githubusercontent.com/233boy/sing-box/main/install.sh)
+# 用法: bash <(curl -sL https://raw.githubusercontent.com/cosaria/sing-box/main/install.sh)
 
-REPO="233boy/sing-box"
+REPO="cosaria/sing-box"
 INSTALL_DIR="/usr/local/bin"
 DATA_DIR="/usr/local/etc/sing-box"
 BIN_NAME="sing-box"

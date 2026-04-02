@@ -12,17 +12,17 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/233boy/sing-box/internal/api"
-	"github.com/233boy/sing-box/internal/engine"
-	"github.com/233boy/sing-box/internal/platform"
-	"github.com/233boy/sing-box/internal/service"
-	"github.com/233boy/sing-box/internal/stats"
-	"github.com/233boy/sing-box/internal/store"
-	"github.com/233boy/sing-box/internal/tui"
-	"github.com/233boy/sing-box/internal/updater"
+	"github.com/cosaria/sing-box/internal/api"
+	"github.com/cosaria/sing-box/internal/engine"
+	"github.com/cosaria/sing-box/internal/platform"
+	"github.com/cosaria/sing-box/internal/service"
+	"github.com/cosaria/sing-box/internal/stats"
+	"github.com/cosaria/sing-box/internal/store"
+	"github.com/cosaria/sing-box/internal/tui"
+	"github.com/cosaria/sing-box/internal/updater"
 	"github.com/spf13/cobra"
 
-	_ "github.com/233boy/sing-box/internal/protocol"
+	_ "github.com/cosaria/sing-box/internal/protocol"
 )
 
 // Version 由构建时 ldflags 注入，默认为 "dev"。

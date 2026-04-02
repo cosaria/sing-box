@@ -3,8 +3,8 @@ package engine
 import (
 	"testing"
 
-	_ "github.com/233boy/sing-box/internal/protocol"
-	"github.com/233boy/sing-box/internal/store"
+	_ "github.com/cosaria/sing-box/internal/protocol"
+	"github.com/cosaria/sing-box/internal/store"
 )
 
 func TestBuildShadowsocksInbound(t *testing.T) {

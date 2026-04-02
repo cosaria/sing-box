@@ -3,8 +3,8 @@ package engine
 import (
 	"fmt"
 
-	"github.com/233boy/sing-box/internal/protocol"
-	"github.com/233boy/sing-box/internal/store"
+	"github.com/cosaria/sing-box/internal/protocol"
+	"github.com/cosaria/sing-box/internal/store"
 	"github.com/sagernet/sing-box/option"
 )
 

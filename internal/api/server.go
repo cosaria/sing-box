@@ -5,7 +5,7 @@ import (
 	"net"
 	"net/http"
 
-	"github.com/233boy/sing-box/internal/store"
+	"github.com/cosaria/sing-box/internal/store"
 	"github.com/go-chi/chi/v5"
 )
 

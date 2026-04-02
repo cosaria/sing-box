@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.26, bubbletea v1.3.10, lipgloss v1.1.0, bubbles v1.0.0, go-qrcode, cobra
 
-**Module path:** `github.com/233boy/sing-box`
+**Module path:** `github.com/cosaria/sing-box`
 
 ---
 
@@ -1225,8 +1225,8 @@ We also need a helper in tui.go to generate share URLs. Add to `internal/tui/tui
 
 ```go
 import (
-	"github.com/233boy/sing-box/internal/protocol"
-	"github.com/233boy/sing-box/internal/store"
+	"github.com/cosaria/sing-box/internal/protocol"
+	"github.com/cosaria/sing-box/internal/store"
 )
 
 func generateShareURL(ib *Inbound, host string) string {
@@ -1790,7 +1790,7 @@ import (
 	"time"
 )
 
-const defaultAPIBase = "https://api.github.com/repos/233boy/sing-box/releases/latest"
+const defaultAPIBase = "https://api.github.com/repos/cosaria/sing-box/releases/latest"
 
 type githubRelease struct {
 	TagName string `json:"tag_name"`
@@ -1864,7 +1864,7 @@ func checkLatestVersion(apiURL string) (version string, downloadURL string, err 
 	}
 
 	// Fallback: construct URL
-	downloadURL = fmt.Sprintf("https://github.com/233boy/sing-box/releases/download/%s/%s", release.TagName, archName)
+	downloadURL = fmt.Sprintf("https://github.com/cosaria/sing-box/releases/download/%s/%s", release.TagName, archName)
 	return release.TagName, downloadURL, nil
 }
 
@@ -1939,17 +1939,17 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/233boy/sing-box/internal/api"
-	"github.com/233boy/sing-box/internal/engine"
-	"github.com/233boy/sing-box/internal/platform"
-	"github.com/233boy/sing-box/internal/service"
-	"github.com/233boy/sing-box/internal/stats"
-	"github.com/233boy/sing-box/internal/store"
-	"github.com/233boy/sing-box/internal/tui"
-	"github.com/233boy/sing-box/internal/updater"
+	"github.com/cosaria/sing-box/internal/api"
+	"github.com/cosaria/sing-box/internal/engine"
+	"github.com/cosaria/sing-box/internal/platform"
+	"github.com/cosaria/sing-box/internal/service"
+	"github.com/cosaria/sing-box/internal/stats"
+	"github.com/cosaria/sing-box/internal/store"
+	"github.com/cosaria/sing-box/internal/tui"
+	"github.com/cosaria/sing-box/internal/updater"
 	"github.com/spf13/cobra"
 
-	_ "github.com/233boy/sing-box/internal/protocol"
+	_ "github.com/cosaria/sing-box/internal/protocol"
 )
 
 var Version = "dev"
@@ -2256,9 +2256,9 @@ Create `install.sh`:
 set -euo pipefail
 
 # sing-box panel 安装脚本
-# 用法: bash <(curl -sL https://raw.githubusercontent.com/233boy/sing-box/main/install.sh)
+# 用法: bash <(curl -sL https://raw.githubusercontent.com/cosaria/sing-box/main/install.sh)
 
-REPO="233boy/sing-box"
+REPO="cosaria/sing-box"
 INSTALL_DIR="/usr/local/bin"
 DATA_DIR="/usr/local/etc/sing-box"
 BIN_NAME="sing-box"
@@ -2437,7 +2437,7 @@ checksum:
 
 release:
   github:
-    owner: 233boy
+    owner: cosaria
     name: sing-box
   draft: false
   prerelease: auto

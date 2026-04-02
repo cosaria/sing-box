@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/url"
 
-	"github.com/233boy/sing-box/internal/store"
+	"github.com/cosaria/sing-box/internal/store"
 	"github.com/sagernet/sing-box/option"
 )
 

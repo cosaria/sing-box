@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A **sing-box one-click installation & management script** (by 233boy) for Linux servers. Automates installing, configuring, and managing the [sing-box](https://github.com/SagerNet/sing-box) proxy core with multiple protocol support. Written entirely in Bash.
+A **sing-box one-click installation & management script** (by cosaria) for Linux servers. Automates installing, configuring, and managing the [sing-box](https://github.com/SagerNet/sing-box) proxy core with multiple protocol support. Written entirely in Bash.
 
 **Primary language:** Chinese (all user-facing strings, comments, and docs are in Chinese).
 

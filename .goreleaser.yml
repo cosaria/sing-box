@@ -25,7 +25,7 @@ checksum:
 
 release:
   github:
-    owner: 233boy
+    owner: cosaria
     name: sing-box
   draft: false
   prerelease: auto

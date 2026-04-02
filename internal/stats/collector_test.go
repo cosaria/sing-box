@@ -3,7 +3,7 @@ package stats
 import (
 	"testing"
 
-	"github.com/233boy/sing-box/internal/store"
+	"github.com/cosaria/sing-box/internal/store"
 )
 
 func TestCollectorFlush(t *testing.T) {

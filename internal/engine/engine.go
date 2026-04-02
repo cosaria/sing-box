@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/233boy/sing-box/internal/stats"
-	"github.com/233boy/sing-box/internal/store"
+	"github.com/cosaria/sing-box/internal/stats"
+	"github.com/cosaria/sing-box/internal/store"
 	box "github.com/sagernet/sing-box"
 	"github.com/sagernet/sing-box/include"
 )

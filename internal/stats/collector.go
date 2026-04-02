@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/233boy/sing-box/internal/store"
+	"github.com/cosaria/sing-box/internal/store"
 )
 
 type Collector struct {

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/233boy/sing-box/internal/tui"
+	"github.com/cosaria/sing-box/internal/tui"
 )
 
 // 构造测试服务器，返回固定 JSON 响应

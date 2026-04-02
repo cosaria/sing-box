@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/233boy/sing-box/internal/tui"
+	"github.com/cosaria/sing-box/internal/tui"
 )
 
 func TestRenderQR(t *testing.T) {

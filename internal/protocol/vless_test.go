@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/233boy/sing-box/internal/store"
+	"github.com/cosaria/sing-box/internal/store"
 )
 
 func TestVLESSDefaultSettings(t *testing.T) {
