@@ -15,8 +15,11 @@ import (
 	"github.com/233boy/sing-box/internal/engine"
 	"github.com/233boy/sing-box/internal/platform"
 	"github.com/233boy/sing-box/internal/service"
+	"github.com/233boy/sing-box/internal/stats"
 	"github.com/233boy/sing-box/internal/store"
 	"github.com/spf13/cobra"
+
+	_ "github.com/233boy/sing-box/internal/protocol"
 )
 
 func main() {
@@ -24,9 +27,7 @@ func main() {
 		Use:   "sing-box",
 		Short: "sing-box 管理面板",
 	}
-
 	rootCmd.AddCommand(serveCmd())
-
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
@@ -37,7 +38,6 @@ func serveCmd() *cobra.Command {
 		listenAddr string
 		dataDir    string
 	)
-
 	cmd := &cobra.Command{
 		Use:   "serve",
 		Short: "启动守护进程（HTTP API + sing-box 引擎）",
@@ -45,11 +45,9 @@ func serveCmd() *cobra.Command {
 			return runServe(listenAddr, dataDir)
 		},
 	}
-
 	plat := platform.Detect()
 	cmd.Flags().StringVar(&listenAddr, "listen", "127.0.0.1:9090", "API 监听地址")
 	cmd.Flags().StringVar(&dataDir, "data-dir", plat.DataDir, "数据目录")
-
 	return cmd
 }
 
@@ -65,15 +63,14 @@ func runServe(listenAddr, dataDir string) error {
 	}
 	defer st.Close()
 
-	token, err := st.GetSetting("api_token")
+	apiToken, err := ensureToken(st, "api_token")
 	if err != nil {
-		return fmt.Errorf("无法读取 API token: %w", err)
+		return fmt.Errorf("无法初始化 API token: %w", err)
 	}
-	if token == "" {
-		token = generateToken()
-		if err := st.SetSetting("api_token", token); err != nil {
-			return fmt.Errorf("无法保存 API token: %w", err)
-		}
+
+	subToken, err := ensureToken(st, "sub_token")
+	if err != nil {
+		return fmt.Errorf("无法初始化订阅 token: %w", err)
 	}
 
 	plat := platform.Detect()
@@ -87,8 +84,13 @@ func runServe(listenAddr, dataDir string) error {
 		slog.Warn("引擎启动失败（可能没有配置）", "error", err)
 	}
 
-	srv := api.NewServer(eng, st, svcMgr, listenAddr, token)
+	collector := stats.NewCollector(eng.Tracker(), st)
+	collectorCtx, collectorCancel := context.WithCancel(context.Background())
+	go collector.Run(collectorCtx, 60*time.Second)
+
+	srv := api.NewServer(eng, st, svcMgr, listenAddr, apiToken, subToken)
 	if err := srv.Start(); err != nil {
+		collectorCancel()
 		return fmt.Errorf("无法启动 API 服务: %w", err)
 	}
 
@@ -97,8 +99,9 @@ func runServe(listenAddr, dataDir string) error {
 		"data_dir", dataDir,
 		"init_system", plat.InitSystem,
 	)
-	fmt.Printf("\nAPI Token: %s\n", token)
-	fmt.Printf("API 地址: http://%s\n\n", listenAddr)
+	fmt.Printf("\nAPI Token: %s\n", apiToken)
+	fmt.Printf("API 地址: http://%s\n", listenAddr)
+	fmt.Printf("订阅地址: http://%s/sub/%s\n\n", listenAddr, subToken)
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
@@ -113,18 +116,33 @@ func runServe(listenAddr, dataDir string) error {
 			}
 		case syscall.SIGINT, syscall.SIGTERM:
 			slog.Info("正在关闭...")
+			collectorCancel()
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			srv.Shutdown(shutdownCtx)
-			eng.Stop()
+			srv.Shutdown(shutdownCtx)  //nolint:errcheck
+			eng.Stop()                 //nolint:errcheck
 			slog.Info("已关闭")
 			return nil
 		}
 	}
 }
 
+func ensureToken(st *store.Store, key string) (string, error) {
+	token, err := st.GetSetting(key)
+	if err != nil {
+		return "", err
+	}
+	if token == "" {
+		token = generateToken()
+		if err := st.SetSetting(key, token); err != nil {
+			return "", err
+		}
+	}
+	return token, nil
+}
+
 func generateToken() string {
 	b := make([]byte, 16)
-	rand.Read(b)
+	rand.Read(b) //nolint:errcheck
 	return hex.EncodeToString(b)
 }
