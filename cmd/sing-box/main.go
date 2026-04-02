@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
@@ -163,12 +162,16 @@ func runServe(dataDir string) error {
 		return fmt.Errorf("无法创建数据目录: %w", err)
 	}
 
-	// 写 PID 文件，供 TUI 通过 SIGHUP 通知守护进程。
+	// 写 PID 文件并加排他锁，防止双实例。
 	pidFile := filepath.Join(dataDir, "sing-box.pid")
-	if err := writePID(pidFile); err != nil {
-		return fmt.Errorf("无法写入 PID 文件: %w", err)
+	pidLock, err := acquirePIDLock(pidFile)
+	if err != nil {
+		return fmt.Errorf("无法获取 PID 锁: %w", err)
 	}
-	defer os.Remove(pidFile)
+	defer func() {
+		pidLock.Close()
+		os.Remove(pidFile)
+	}()
 
 	dbPath := filepath.Join(dataDir, "panel.db")
 	st, err := store.Open(dbPath)
@@ -184,7 +187,11 @@ func runServe(dataDir string) error {
 
 	collector := stats.NewCollector(eng.Tracker(), st)
 	collectorCtx, collectorCancel := context.WithCancel(context.Background())
-	go collector.Run(collectorCtx, 60*time.Second)
+	if eng.Running() {
+		go collector.Run(collectorCtx, 60*time.Second)
+	} else {
+		slog.Info("引擎未运行，流量收集器已跳过")
+	}
 
 	slog.Info("sing-box 守护进程已启动",
 		"pid", os.Getpid(),
@@ -205,18 +212,26 @@ func runServe(dataDir string) error {
 		case syscall.SIGINT, syscall.SIGTERM:
 			slog.Info("正在关闭...")
 			collectorCancel()
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			_ = shutdownCtx // eng.Stop 目前不接受 ctx
-			eng.Stop()      //nolint:errcheck
+			eng.Stop() //nolint:errcheck
 			slog.Info("已关闭")
 			return nil
 		}
 	}
 }
 
-// writePID 将当前进程 PID 写入指定文件。
-func writePID(path string) error {
-	pid := strconv.Itoa(os.Getpid())
-	return os.WriteFile(path, []byte(strings.TrimSpace(pid)+"\n"), 0644)
+// acquirePIDLock 创建/打开 PID 文件并加排他锁，写入当前 PID。
+// 返回的文件句柄必须由调用方持有直到进程退出，以维持锁。
+func acquirePIDLock(path string) (*os.File, error) {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return nil, err
+	}
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		f.Close()
+		return nil, fmt.Errorf("另一个 sing-box serve 实例正在运行")
+	}
+	f.Truncate(0)
+	f.WriteString(strconv.Itoa(os.Getpid()) + "\n")
+	f.Sync()
+	return f, nil
 }

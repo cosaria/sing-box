@@ -102,6 +102,10 @@ func (e *Engine) Start() error {
 	}
 
 	if err := e.safeStart(inbounds); err != nil {
+		e.crashCount++
+		if e.crashCount == 1 {
+			e.crashFirst = time.Now()
+		}
 		e.lastError = err
 		return err
 	}
@@ -153,9 +157,20 @@ func (e *Engine) Reload() error {
 	}
 
 	if err := e.safeStart(inbounds); err != nil {
+		e.crashCount++
+		if e.crashCount == 1 {
+			e.crashFirst = time.Now()
+		}
 		e.lastError = err
 		return err
 	}
+
+	// 清理已删除 inbound 的 tracker 统计条目
+	activeTags := make(map[string]bool)
+	for _, ib := range inbounds {
+		activeTags[ib.Tag] = true
+	}
+	e.tracker.Prune(activeTags)
 
 	e.lastError = nil
 	slog.Info("engine reloaded", "inbounds", len(inbounds))

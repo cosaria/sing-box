@@ -47,6 +47,17 @@ func (t *Tracker) getOrCreate(tag string) *inboundStats {
 	return s
 }
 
+// Prune 移除不在活跃集合中的 inbound 统计条目，防止 map 无限增长。
+func (t *Tracker) Prune(activeTags map[string]bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for tag := range t.stats {
+		if !activeTags[tag] {
+			delete(t.stats, tag)
+		}
+	}
+}
+
 func (t *Tracker) Snapshot() map[string]TrafficCounter {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
